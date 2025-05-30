@@ -1,0 +1,97 @@
+{
+    "Stacks": [
+        {
+            "StackId": "arn:aws:cloudformation:us-east-2:841162677736:stack/odoo-prod/b066a100-3cd2-11f0-befb-06851b9185e1",
+            "StackName": "odoo-prod",
+            "Description": "CloudFormation template to deploy Odoo on AWS using default VPC.\n- EFS filesystem, ElastiCache Redis, RDS PostgreSQL, and S3 backup bucket\n- Dynamic odoo-install.env in S3\n- Ubuntu 22.04 arm64 spot instances via Launch Template + ASGs (staging & production)\n- CI/CD pipelines with CodeDeploy/CodePipeline\n- Separate Security Groups for services, fleet hosts, and ELB\n- IAM user for s3fs with full S3 access\n- ACM TLS certificate for primary and staging domains\n- Auto Scaling target tracking on ALB requests per target\n- Resource names prefixed with \"Odoo-\"\n",
+            "Parameters": [
+                {
+                    "ParameterKey": "ScriptKey",
+                    "ParameterValue": "setup-instance.sh"
+                },
+                {
+                    "ParameterKey": "ArtifactBucketName",
+                    "ParameterValue": "odoo-artifact-bucket"
+                },
+                {
+                    "ParameterKey": "DomainName",
+                    "ParameterValue": "example.com"
+                },
+                {
+                    "ParameterKey": "ScriptBucketName",
+                    "ParameterValue": "odoo-script-bucket"
+                },
+                {
+                    "ParameterKey": "StagingMinSize",
+                    "ParameterValue": "1"
+                },
+                {
+                    "ParameterKey": "DefaultSubnetIds",
+                    "ParameterValue": "subnet-0a207e329d01ed18c,subnet-048665a82999579c3,subnet-0e8a62981024e0534"
+                },
+                {
+                    "ParameterKey": "StagingMaxSize",
+                    "ParameterValue": "1"
+                },
+                {
+                    "ParameterKey": "RdsUser",
+                    "ParameterValue": "odoo"
+                },
+                {
+                    "ParameterKey": "RdsPassword",
+                    "ParameterValue": "admin"
+                },
+                {
+                    "ParameterKey": "AdminPasswd",
+                    "ParameterValue": "admin"
+                },
+                {
+                    "ParameterKey": "ProdMinSize",
+                    "ParameterValue": "2"
+                },
+                {
+                    "ParameterKey": "PrimaryAZ",
+                    "ParameterValue": "us-east-2"
+                },
+                {
+                    "ParameterKey": "GitHubOwner",
+                    "ParameterValue": "Captivea-Ali-Amer"
+                },
+                {
+                    "ParameterKey": "ProdMaxSize",
+                    "ParameterValue": "8"
+                },
+                {
+                    "ParameterKey": "RedisNodeType",
+                    "ParameterValue": "cache.t4g.small"
+                },
+                {
+                    "ParameterKey": "OdooVersion",
+                    "ParameterValue": "18.0"
+                },
+                {
+                    "ParameterKey": "GitHubToken",
+                    "ParameterValue": "****"
+                },
+                {
+                    "ParameterKey": "GitHubRepo",
+                    "ParameterValue": "odoo-aws"
+                }
+            ],
+            "CreationTime": "2025-05-29T21:47:28.627000+00:00",
+            "DeletionTime": "2025-05-29T21:47:30.797000+00:00",
+            "RollbackConfiguration": {},
+            "StackStatus": "ROLLBACK_COMPLETE",
+            "DisableRollback": false,
+            "NotificationARNs": [],
+            "Capabilities": [
+                "CAPABILITY_NAMED_IAM"
+            ],
+            "Tags": [],
+            "EnableTerminationProtection": false,
+            "DriftInformation": {
+                "StackDriftStatus": "NOT_CHECKED"
+            }
+        }
+    ]
+}

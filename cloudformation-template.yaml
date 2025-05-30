@@ -36,6 +36,10 @@ Parameters:
     Default: odoo
   RdsPassword:
     Type: String
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 41
+    Description: RDS Master user password (no /, @, ", or spaces)
   RedisNodeType:
     Type: String
     Default: cache.t4g.small
@@ -45,6 +49,10 @@ Parameters:
     Type: String
   AdminPasswd:
     Type: String
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 41
+    Description: RDS Master user password (no /, @, ", or spaces)
   OdooVersion:
     Type: String
     Default: '18.0'
@@ -62,16 +70,26 @@ Parameters:
   ProdMaxSize:
     Type: Number
     Default: 8
+  OdooDefaultVPC:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where subnets belong
 
 Resources:
   # Default VPC
-  OdooDefaultVPC:
-    Type: AWS::EC2::VPC
-    Properties:
-      Default: true
+  # OdooDefaultVPC:
+  #   Type: AWS::EC2::VPC
+  #   Properties:
+  #     Default: true
+  # OdooDefaultVPC:
+  #   Type: AWS::EC2::VPC
+  #   Properties:
+  #     CidrBlock: 10.0.0.0/16
+  #     Tags:
+  #       - Key: Name
+  #         Value: odoo-default-vpc
 
   # Security Groups
-  Odoo-ELB-SG:
+  OdooELBSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: ELB security group
@@ -89,7 +107,7 @@ Resources:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
 
-  Odoo-Fleet-SG:
+  OdooFleetSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: EC2 fleet security group
@@ -98,137 +116,138 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          SourceSecurityGroupId: !Ref Odoo-ELB-SG
+          SourceSecurityGroupId: !Ref OdooELBSG
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
 
-  Odoo-Services-SG:
+  OdooServicesSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Service security group for EFS/RDS/Redis
       VpcId: !Ref OdooDefaultVPC
       SecurityGroupIngress:
         - IpProtocol: -1
-          SourceSecurityGroupId: !Ref Odoo-Fleet-SG
+          SourceSecurityGroupId: !Ref OdooFleetSG
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
 
   # EFS with lifecycle policies
-  Odoo-EFS:
+  OdooEFS:
     Type: AWS::EFS::FileSystem
     Properties:
       FileSystemTags:
         - Key: Name
-          Value: Odoo-EFS
+          Value: OdooEFS
       PerformanceMode: generalPurpose
       ThroughputMode: elastic
       LifecyclePolicies:
         - TransitionToIA: AFTER_30_DAYS
-        - TransitionToPrimaryStorageClass: AFTER_365_DAYS
+        # - TransitionToPrimaryStorageClass: AFTER_365_DAYS
 
   # EFS Mount Targets across AZs
-  Odoo-EFSMount1:
+  OdooEFSMount1:
     Type: AWS::EFS::MountTarget
     Properties:
-      FileSystemId: !Ref Odoo-EFS
+      FileSystemId: !Ref OdooEFS
       SubnetId: !Select [0, !Ref DefaultSubnetIds]
-      SecurityGroups: [ !Ref Odoo-Services-SG ]
-  Odoo-EFSMount2:
+      SecurityGroups: [ !Ref OdooServicesSG ]
+  OdooEFSMount2:
     Type: AWS::EFS::MountTarget
     Properties:
-      FileSystemId: !Ref Odoo-EFS
+      FileSystemId: !Ref OdooEFS
       SubnetId: !Select [1, !Ref DefaultSubnetIds]
-      SecurityGroups: [ !Ref Odoo-Services-SG ]
-  Odoo-EFSMount3:
+      SecurityGroups: [ !Ref OdooServicesSG ]
+  OdooEFSMount3:
     Type: AWS::EFS::MountTarget
     Properties:
-      FileSystemId: !Ref Odoo-EFS
+      FileSystemId: !Ref OdooEFS
       SubnetId: !Select [2, !Ref DefaultSubnetIds]
-      SecurityGroups: [ !Ref Odoo-Services-SG ]
+      SecurityGroups: [ !Ref OdooServicesSG ]
 
   # ElastiCache Redis replication group in VPC
-  Odoo-Redis:
+  OdooRedis:
     Type: AWS::ElastiCache::ReplicationGroup
     Properties:
-      ReplicationGroupId: Odoo-Redis
+      ReplicationGroupId: OdooRedis
       ReplicationGroupDescription: "Redis for Odoo"
       Engine: redis
-      EngineVersion: '8.0'
+      EngineVersion: '6.0'
       AutomaticFailoverEnabled: false
       CacheNodeType: !Ref RedisNodeType
       NumNodeGroups: 1
       ReplicasPerNodeGroup: 0
-      SecurityGroupIds: [ !Ref Odoo-Services-SG ]
+      SecurityGroupIds: [ !Ref OdooServicesSG ]
 
   # RDS PostgreSQL Multi-AZ across all AZs
-  Odoo-RDSSubnetGroup:
+  OdooRDSSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
       DBSubnetGroupDescription: "Odoo RDS Subnet Group"
       SubnetIds: !Ref DefaultSubnetIds
-  Odoo-RDS:
+  OdooRDS:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBInstanceIdentifier: Odoo-RDS
+      DBInstanceIdentifier: OdooRDS
       Engine: postgres
       EngineVersion: '16.8'
       DBInstanceClass: db.m7g.large
       AllocatedStorage: 100
       MasterUsername: !Ref RdsUser
-      MasterUserPassword: !Ref RdsPassword
+      # MasterUserPassword: !Ref RdsPassword
+      MasterUserPassword: 'Secur3!Passw0rd'
       StorageType: gp3
       MultiAZ: true
       PubliclyAccessible: false
-      DBSubnetGroupName: !Ref Odoo-RDSSubnetGroup
-      VPCSecurityGroups: [ !Ref Odoo-Services-SG ]
+      DBSubnetGroupName: !Ref OdooRDSSubnetGroup
+      VPCSecurityGroups: [ !Ref OdooServicesSG ]
 
   # S3 backup and config buckets + dynamic env file
-  Odoo-BackupBucket:
+  OdooBackupBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "${ArtifactBucketName}-backup"
-  Odoo-ConfigBucket:
+  OdooConfigBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "${ArtifactBucketName}-config"
-  Odoo-EnvFile:
-    Type: AWS::S3::Object
-    Properties:
-      Bucket: !Ref Odoo-ConfigBucket
-      Key: odoo-install.env
-      ContentType: text/plain
-      Body:
-        Fn::Join:
-          - "\n"
-          - - !Sub "EFS_ENDPOINT=${Odoo-EFS.DnsName}"
-            - !Sub "RDS_ENDPOINT=${Odoo-RDS.Endpoint.Address}"
-            - !Sub "RDS_USER=${RdsUser}"
-            - !Sub "RDS_PASSWORD=${RdsPassword}"
-            - !Sub "REDIS_ENDPOINT=${Odoo-Redis.PrimaryEndPoint.Address}"
-            - !Sub "S3_BUCKET=${Odoo-BackupBucket}"
-            - !Sub "GITHUB_REPO=https://github.com/${GitHubOwner}/${GitHubRepo}.git"
-            - !Sub "GITHUB_USERNAME=${GitHubOwner}"
-            - !Sub "GITHUB_TOKEN=${GitHubToken}"
-            - !Sub "S3FS_KEY=${S3FSAccessKey.AccessKeyId}"
-            - !Sub "S3FS_SECRET=${S3FSAccessKey.SecretAccessKey}"
-            - !Sub "ADMIN_PASSWD=${AdminPasswd}"
-            - !Sub "ODOO_VERSION=${OdooVersion}"
+  # OdooEnvFile:
+  #   Type: AWS::S3::Object
+  #   Properties:
+  #     Bucket: !Ref OdooConfigBucket
+  #     Key: odoo-install.env
+  #     ContentType: text/plain
+  #     Body:
+  #       Fn::Join:
+  #         - "\n"
+  #         - - !Sub "EFS_ENDPOINT=${OdooEFS.DnsName}"
+  #           - !Sub "RDS_ENDPOINT=${OdooRDS.Endpoint.Address}"
+  #           - !Sub "RDS_USER=${RdsUser}"
+  #           - !Sub "RDS_PASSWORD=${RdsPassword}"
+  #           - !Sub "REDIS_ENDPOINT=${OdooRedis.PrimaryEndPoint.Address}"
+  #           - !Sub "S3_BUCKET=${OdooBackupBucket}"
+  #           - !Sub "GITHUB_REPO=https://github.com/${GitHubOwner}/${GitHubRepo}.git"
+  #           - !Sub "GITHUB_USERNAME=${GitHubOwner}"
+  #           - !Sub "GITHUB_TOKEN=${GitHubToken}"
+  #           # - !Sub "S3FS_KEY=${OdooS3FSAccessKey.AccessKeyId}"
+  #           # - !Sub "S3FS_SECRET=${OdooS3FSAccessKey.SecretAccessKey}"
+  #           - !Sub "ADMIN_PASSWD=${AdminPasswd}"
+  #           - !Sub "ODOO_VERSION=${OdooVersion}"
 
   # IAM user for s3fs with S3 full access
-  Odoo-S3FSUser:
+  OdooS3FSUser:
     Type: AWS::IAM::User
     Properties:
       UserName: odoo-s3fs-user
       ManagedPolicyArns: [ arn:aws:iam::aws:policy/AmazonS3FullAccess ]
-  Odoo-S3FSAccessKey:
+  OdooS3FSAccessKey:
     Type: AWS::IAM::AccessKey
     Properties:
-      UserName: !Ref Odoo-S3FSUser
+      UserName: !Ref OdooS3FSUser
 
   # ACM TLS certificate for domain and *.subdomain
-  Odoo-Certificate:
+  OdooCertificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
       DomainName: !Ref DomainName
@@ -236,51 +255,51 @@ Resources:
       ValidationMethod: DNS
 
   # EC2 Launch Template using spot t4g.small
-  Odoo-LaunchTemplate:
+  OdooLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: Odoo-LaunchTemplate
+      LaunchTemplateName: OdooLaunchTemplate
       LaunchTemplateData:
         InstanceType: t4g.small
-        ImageId: ami-0abcdef1234567890
+        ImageId: ami-0c96d7d095577f8de
         InstanceMarketOptions: { MarketType: spot }
-        SecurityGroupIds: [ !Ref Odoo-Fleet-SG ]
+        SecurityGroupIds: [ !Ref OdooFleetSG ]
         UserData:
           Fn::Base64: !Sub |
             #!/bin/bash -xe
             aws s3 cp s3://${ScriptBucketName}/${ScriptKey} \
               /root/install-odoo.sh
-            aws s3 cp s3://${Odoo-ConfigBucket}/odoo-install.env \
+            aws s3 cp s3://${OdooConfigBucket}/odoo-install.env \
               /root/odoo-install.env
             chmod +x /root/install-odoo.sh
             /root/install-odoo.sh /root/odoo-install.env
 
   # ALB, target groups, and listeners with host-header routing
-  Odoo-LB:
+  OdooLB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: Odoo-LB
+      Name: OdooLB
       Scheme: internet-facing
       Subnets: !Ref DefaultSubnetIds
-      SecurityGroups: [ !Ref Odoo-ELB-SG ]
-  Odoo-Staging-TG:
+      SecurityGroups: [ !Ref OdooELBSG ]
+  OdooStagingTG:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: Odoo-Staging-TG
+      Name: OdooStagingTG
       Port: 80
       Protocol: HTTP
       VpcId: !Ref OdooDefaultVPC
-  Odoo-Prod-TG:
+  OdooProdTG:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: Odoo-Prod-TG
+      Name: OdooProdTG
       Port: 80
       Protocol: HTTP
       VpcId: !Ref OdooDefaultVPC
   OdooListener80:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref Odoo-LB
+      LoadBalancerArn: !Ref OdooLB
       Port: 80
       Protocol: HTTP
       DefaultActions:
@@ -292,14 +311,14 @@ Resources:
   OdooListener443:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref Odoo-LB
+      LoadBalancerArn: !Ref OdooLB
       Port: 443
       Protocol: HTTPS
-      Certificates: [ { CertificateArn: !Ref Odoo-Certificate } ]
+      Certificates: [ { CertificateArn: !Ref OdooCertificate } ]
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref Odoo-Prod-TG
-  Odoo-HostRule-Staging:
+          TargetGroupArn: !Ref OdooProdTG
+  OdooHostRuleStaging:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       ListenerArn: !Ref OdooListener443
@@ -309,8 +328,8 @@ Resources:
           HostHeaderConfig: { Values: [ !Sub "staging.${DomainName}" ] }
       Actions:
         - Type: forward
-          TargetGroupArn: !Ref Odoo-Staging-TG
-  Odoo-HostRule-Prod:
+          TargetGroupArn: !Ref OdooStagingTG
+  OdooHostRuleProd:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       ListenerArn: !Ref OdooListener443
@@ -320,68 +339,70 @@ Resources:
           HostHeaderConfig: { Values: [ !Ref DomainName ] }
       Actions:
         - Type: forward
-          TargetGroupArn: !Ref Odoo-Prod-TG
+          TargetGroupArn: !Ref OdooProdTG
 
   # Auto Scaling Groups for staging and production
-  Odoo-Staging-ASG:
+  OdooStagingASG:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      AutoScalingGroupName: Odoo-Staging-ASG
+      AutoScalingGroupName: OdooStagingASG
       AvailabilityZones: [ !Ref PrimaryAZ ]
-      LaunchTemplate: { LaunchTemplateId: !Ref Odoo-LaunchTemplate, Version: !GetAtt Odoo-LaunchTemplate.LatestVersionNumber }
+      LaunchTemplate: { LaunchTemplateId: !Ref OdooLaunchTemplate, Version: !GetAtt OdooLaunchTemplate.LatestVersionNumber }
       MinSize: !Ref StagingMinSize
       MaxSize: !Ref StagingMaxSize
       DesiredCapacity: !Ref StagingMinSize
-      TargetGroupARNs: [ !Ref Odoo-Staging-TG ]
+      TargetGroupARNs: [ !Ref OdooStagingTG ]
       Tags:
         - Key: Name
-          Value: Odoo-Staging-ASG
+          Value: OdooStagingASG
           PropagateAtLaunch: true
-  Odoo-Prod-ASG:
+  OdooProdASG:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      AutoScalingGroupName: Odoo-Prod-ASG
+      AutoScalingGroupName: OdooProdASG
       AvailabilityZones: [ !Ref PrimaryAZ ]
-      LaunchTemplate: { LaunchTemplateId: !Ref Odoo-LaunchTemplate, Version: !GetAtt Odoo-LaunchTemplate.LatestVersionNumber }
+      LaunchTemplate: { LaunchTemplateId: !Ref OdooLaunchTemplate, Version: !GetAtt OdooLaunchTemplate.LatestVersionNumber }
       MinSize: !Ref ProdMinSize
       MaxSize: !Ref ProdMaxSize
       DesiredCapacity: !Ref ProdMinSize
-      TargetGroupARNs: [ !Ref Odoo-Prod-TG ]
+      TargetGroupARNs: [ !Ref OdooProdTG ]
       Tags:
         - Key: Name
-          Value: Odoo-Prod-ASG
+          Value: OdooProdASG
           PropagateAtLaunch: true
 
   # Scaling policies tracking ALBRequestCountPerTarget
-  Odoo-Staging-ScalingPolicy:
+  OdooStagingScalingPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
-      AutoScalingGroupName: !Ref Odoo-Staging-ASG
+      AutoScalingGroupName: !Ref OdooStagingASG
       PolicyType: TargetTrackingScaling
       TargetTrackingConfiguration:
         PredefinedMetricSpecification:
-          PredefinedMetricType: ALBRequestCountPerTarget
-          ResourceLabel: !Sub "app/${Odoo-LB.LoadBalancerFullName}/targetgroup/${Odoo-Staging-TG.TargetGroupFullName}"
+          PredefinedMetricType: ASGAverageCPUUtilization
+          # PredefinedMetricType: ALBRequestCountPerTarget
+          # ResourceLabel: !Sub "app/${OdooLB.LoadBalancerFullName}/targetgroup/${OdooStagingTG.TargetGroupFullName}"
         TargetValue: 50.0
-        EstimatedInstanceWarmup: 300
-  Odoo-Prod-ScalingPolicy:
+        # EstimatedInstanceWarmup: 300 > For Step Scaling Policies
+  OdooProdScalingPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
-      AutoScalingGroupName: !Ref Odoo-Prod-ASG
+      AutoScalingGroupName: !Ref OdooProdASG
       PolicyType: TargetTrackingScaling
       TargetTrackingConfiguration:
         PredefinedMetricSpecification:
-          PredefinedMetricType: ALBRequestCountPerTarget
-          ResourceLabel: !Sub "app/${Odoo-LB.LoadBalancerFullName}/targetgroup/${Odoo-Prod-TG.TargetGroupFullName}"
+          PredefinedMetricType: ASGAverageCPUUtilization
+          # PredefinedMetricType: ALBRequestCountPerTarget
+          # ResourceLabel: !Sub "app/${OdooLB.LoadBalancerFullName}/targetgroup/${OdooProdTG.TargetGroupFullName}"
         TargetValue: 50.0
-        EstimatedInstanceWarmup: 300
+        # EstimatedInstanceWarmup: 300 > For Step Scaling Policies
 
 Outputs:
   LoadBalancerDNS:
-    Value: !GetAtt Odoo-LB.DNSName
+    Value: !GetAtt OdooLB.DNSName
   ConfigBucketName:
-    Value: !Ref Odoo-ConfigBucket
+    Value: !Ref OdooConfigBucket
   BackupBucketName:
-    Value: !Ref Odoo-BackupBucket
+    Value: !Ref OdooBackupBucket
   LaunchTemplateId:
-    Value: !Ref Odoo-LaunchTemplate
+    Value: !Ref OdooLaunchTemplate

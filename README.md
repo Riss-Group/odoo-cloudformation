@@ -42,6 +42,10 @@ aws cloudformation create-stack \
                ParameterKey=GitHubToken,ParameterValue=YOUR_GITHUB_TOKEN \
                ...
 ```
+```sh
+   aws cloudformation create-stack   --stack-name odoo-prod   --template-body file://cloudformation-template.yaml   --parameters file://params.json   --capabilities CAPABILITY_NAMED_IAM
+```
+
 
 ## Parameters
 - **DefaultSubnetIds**: List of default subnet IDs for your VPC (comma-separated)
