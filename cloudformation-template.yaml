@@ -144,7 +144,6 @@ Resources:
       ThroughputMode: elastic
       LifecyclePolicies:
         - TransitionToIA: AFTER_30_DAYS
-        # - TransitionToPrimaryStorageClass: AFTER_365_DAYS
 
   # EFS Mount Targets across AZs
   OdooEFSMount1:
@@ -261,7 +260,7 @@ Resources:
       LaunchTemplateName: OdooLaunchTemplate
       LaunchTemplateData:
         InstanceType: t4g.small
-        ImageId: ami-0c96d7d095577f8de
+        ImageId: ami-050499786ebf55a6a
         InstanceMarketOptions: { MarketType: spot }
         SecurityGroupIds: [ !Ref OdooFleetSG ]
         UserData:
@@ -406,3 +405,7 @@ Outputs:
     Value: !Ref OdooBackupBucket
   LaunchTemplateId:
     Value: !Ref OdooLaunchTemplate
+  S3FSAccessKeyId:
+    Value: !Ref OdooS3FSAccessKey
+  S3FSSecretAccessKey:
+    Value: !GetAtt OdooS3FSAccessKey.SecretAccessKey 
